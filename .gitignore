@@ -1,0 +1,16 @@
+build/
+release/
+*.app/
+*.app.new/
+*.dmg
+*.pkg
+*.xcuserstate
+xcuserdata/
+.DS_Store
+*.store*
+*.log
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+.env*

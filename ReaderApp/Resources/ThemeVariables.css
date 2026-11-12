@@ -1,0 +1,3 @@
+:root[data-theme="white"]{color-scheme:light;--desk:#F1F2EF;--paper:#FFFFFF;--ink:#292D29;--muted:#656D65;--card:#FFFFFF;--line:#DFE4DA;--accent:#526A50;--highlight:#DAE2AB66;}
+:root[data-theme="paper"]{color-scheme:light;--desk:#EFECE5;--paper:#F7F4EC;--ink:#302F2B;--muted:#6D7068;--card:#FFFCF6;--line:#DEDCD2;--accent:#647557;--highlight:#E2E6B866;}
+:root[data-theme="dark"]{color-scheme:dark;--desk:#20231F;--paper:#272B25;--ink:#E8EADF;--muted:#ADB5A6;--card:#30352D;--line:#434C3D;--accent:#B6CAA2;--highlight:#65713D66;}

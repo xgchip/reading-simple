@@ -1,0 +1,14 @@
+{
+  "version": "2026-11-12-redesign-v1",
+  "defaultTheme": "paper",
+  "themes": {
+    "white": {"label":"素白","chrome":"#F1F2EF","canvas":"#FFFFFF","surface":"#FFFFFF","ink":"#292D29","secondary":"#656D65","accent":"#526A50","selection":"#E0E8D8","line":"#DFE4DA","highlight":"#DAE2AB","texture":null},
+    "paper": {"label":"暖纸","chrome":"#EFECE5","canvas":"#F7F4EC","surface":"#FFFCF6","ink":"#302F2B","secondary":"#6D7068","accent":"#647557","selection":"#E1E5D7","line":"#DEDCD2","highlight":"#E2E6B8","texture":"assets/paper-warm.png"},
+    "dark": {"label":"深色","chrome":"#20231F","canvas":"#272B25","surface":"#30352D","ink":"#E8EADF","secondary":"#ADB5A6","accent":"#B6CAA2","selection":"#3C4734","line":"#434C3D","highlight":"#65713D","texture":"assets/paper-dark.png"}
+  },
+  "spacing":[4,8,12,16,24,32,48,64],
+  "layout":{"sidebarWidth":216,"toolbarHeight":56,"footerHeight":30,"contentInset":48,"narrowInset":24,"proseMaxWidth":640,"notesWidth":264,"notesGap":40,"coverWidth":156,"coverHeight":224,"thoughtMaxWidth":820},
+  "type":{"pageTitle":30,"sectionTitle":21,"bookTitle":15,"bodyUI":14,"noteBody":17,"metadata":12,"micro":11,"epubBodyDefault":20,"epubLineHeight":1.9,"epubFamily":"'Songti SC','STSong',serif"},
+  "radii":{"control":7,"search":9,"note":12,"cover":4},
+  "texture":{"tilePixels":512,"scale":1,"opacity":1,"notes":"Precomposited low-contrast original tile. Tile at natural resolution; use pure token background if unavailable. PDF page pixels must not be modified."}
+}
