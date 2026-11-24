@@ -50,3 +50,34 @@ struct ReaderButtonStyle:ButtonStyle {
             .opacity(configuration.isPressed ? 0.78:1)
     }
 }
+
+/// Shared appearance controls for PDF selections and saved annotations.
+struct AnnotationAppearance: View {
+    @Binding var style: String
+    @Binding var color: String
+    private let presets = ["#E8C55A", "#72B88A", "#65A9E8", "#B593DA", "#E990A5", "#ED995A"]
+    private let names = ["金黄", "草绿", "天空蓝", "浅紫", "玫瑰粉", "橙色"]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("划线样式", selection: $style) {
+                Text("荧光笔").tag("highlight")
+                Text("波浪线").tag("wave")
+            }.pickerStyle(.segmented)
+            HStack(spacing: 9) {
+                ForEach(Array(presets.enumerated()), id: \.offset) { index, hex in
+                    Button { color = hex } label: {
+                        Circle().fill(Color(hex: Int(hex.dropFirst(), radix: 16)!))
+                            .frame(width: 20, height: 20)
+                            .overlay { if color.uppercased() == hex { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.black) } }
+                    }.buttonStyle(.plain).accessibilityLabel(names[index]).help(names[index])
+                }
+                ColorPicker("自定义", selection: Binding(get: {
+                    Color(hex: Int(color.dropFirst(), radix: 16) ?? 0xE8C55A)
+                }, set: { value in
+                    guard let rgb = NSColor(value).usingColorSpace(.sRGB) else { return }
+                    color = String(format: "#%02X%02X%02X", Int((rgb.redComponent * 255).rounded()), Int((rgb.greenComponent * 255).rounded()), Int((rgb.blueComponent * 255).rounded()))
+                }), supportsOpacity: false).font(.caption)
+            }
+        }
+    }
+}

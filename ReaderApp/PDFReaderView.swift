@@ -8,11 +8,32 @@ struct PDFReaderView:View {
     @Environment(\.readingTheme) private var theme
     let repository:LibraryRepository
     let session:ReaderSession
+    @State private var selectionAnchor:CGPoint?
+    @State private var editingMark:Annotation?
+    @State private var style="highlight"
+    @State private var color="#E8C55A"
+    @State private var toolbarHeight:CGFloat=150
     var body:some View {
         GeometryReader{proxy in
             HStack(spacing:0){
-                NativePDFReader(repository:repository,session:session,revision:repository.revision,navigation:session.navigationToken,scale:session.book?.pdfScale ?? 0,rotation:session.book?.pdfRotation ?? 0,marginVisible:session.sidebar && proxy.size.width>=810,theme:theme)
-                    .overlay(alignment:.bottom){if !session.pdfSelection.isEmpty {HStack{Text("已选择 \(session.pdfSelection.count) 个页面片段").font(.caption);Button("划线"){save(false)};Button("写想法"){save(true)}}.padding(12).background(.regularMaterial,in:RoundedRectangle(cornerRadius:10)).padding(18)}}
+                NativePDFReader(repository:repository,session:session,revision:repository.revision,navigation:session.navigationToken,scale:session.book?.pdfScale ?? 0,rotation:session.book?.pdfRotation ?? 0,marginVisible:session.sidebar && proxy.size.width>=810,theme:theme,onSelectionAnchor:{point in
+                    selectionAnchor=point
+                    if point == nil {editingMark=nil}
+                    else if editingMark == nil,let book=session.book,let existing=repository.marks(for:book).first(where:{$0.pdfPieces==session.pdfSelection}) {
+                        editingMark=existing;style=existing.styleRaw;color=existing.colorHex
+                    }
+                },onEditAnnotation:{mark,point in
+                    editingMark=mark;style=mark.styleRaw;color=mark.colorHex;selectionAnchor=point
+                })
+                    .overlay(alignment:.topLeading){GeometryReader{area in
+                        if let anchor=selectionAnchor,editingMark != nil || !session.pdfSelection.isEmpty {
+                            VStack(alignment:.leading,spacing:10){
+                                AnnotationAppearance(style:$style,color:$color)
+                                HStack{Button(editingMark == nil ? "划线":"应用样式"){save(false)};Button("写想法"){save(true)};if let mark=editingMark,!mark.note.isEmpty {Button("查看想法"){session.pdfPopup=mark;selectionAnchor=nil;editingMark=nil}};Spacer();Button{selectionAnchor=nil;editingMark=nil;session.pdfView?.clearSelection();session.pdfSelection=[]}label:{Image(systemName:"xmark")}.help("关闭标注工具栏")}
+                            }.padding(12).frame(width:min(300,max(100,area.size.width-16))).background(GeometryReader{size in Color.clear.preference(key:PDFToolbarHeight.self,value:size.size.height)}).onPreferenceChange(PDFToolbarHeight.self){toolbarHeight=$0}.background(.regularMaterial,in:RoundedRectangle(cornerRadius:12)).overlay(RoundedRectangle(cornerRadius:12).stroke(theme.line)).shadow(color:.black.opacity(0.16),radius:12,y:4)
+                                .offset(x:max(8,min(anchor.x-150,area.size.width-308)),y:toolbarY(anchor.y,height:area.size.height))
+                        }
+                    }}
                 if session.sidebar && proxy.size.width>=810,let book=session.book {
                     Divider();ScrollView{VStack(alignment:.leading,spacing:16){Text("页边想法").font(.system(size:18,weight:.medium,design:.serif));Text("可见页："+session.pdfVisiblePages.sorted().map{String($0+1)}.joined(separator:"、")).font(.system(size:10)).foregroundStyle(theme.muted)
                         let marks=repository.marks(for:book).filter{m in !m.note.isEmpty && m.pdfPieces.contains{session.pdfVisiblePages.contains($0.page)}}
@@ -23,11 +44,32 @@ struct PDFReaderView:View {
             }.overlay(alignment:.topLeading){if !session.pdfNotice.isEmpty {Text(session.pdfNotice).font(.caption).padding(10).background(.regularMaterial,in:RoundedRectangle(cornerRadius:8)).padding(12)}}
         }
     }
-    func save(_ note:Bool){guard let book=session.book else{return};do{let mark=try repository.pdfMark(book:book,pieces:session.pdfSelection);session.pdfView?.clearSelection();session.pdfSelection=[];if note{session.editing=mark}}catch{session.error=error.localizedDescription}}
+    private func toolbarY(_ y:CGFloat,height:CGFloat)->CGFloat {
+        let proposed=y+18+toolbarHeight<=height-8 ? y+18:y-toolbarHeight-18
+        return max(8,min(proposed,max(8,height-toolbarHeight-8)))
+    }
+    func save(_ note:Bool){guard let book=session.book else{return};do{
+        let mark:Annotation
+        if let existing=editingMark {mark=existing}else{mark=try repository.pdfMark(book:book,pieces:session.pdfSelection)}
+        try repository.setAppearance(mark,style:style,color:color)
+        session.pdfView?.clearSelection();session.pdfSelection=[];selectionAnchor=nil;editingMark=nil
+        if note{session.editing=mark}
+    }catch{session.error=error.localizedDescription}}
+
+}
+private struct PDFToolbarHeight:PreferenceKey {
+    static let defaultValue:CGFloat=150
+    static func reduce(value:inout CGFloat,nextValue:()->CGFloat){value=nextValue()}
 }
 final class WidthFittingPDFView:PDFView {
     var onReaderAnnotation:((UUID)->Void)?
-    override func mouseDown(with event:NSEvent){let point=convert(event.locationInWindow,from:nil);if let page=page(for:point,nearest:false),let annotation=page.annotation(at:convert(point,to:page)),annotation.type==PDFAnnotationSubtype.text.rawValue,let raw=annotation.userName,raw.hasPrefix("reader:"),let id=UUID(uuidString:String(raw.dropFirst(7))){onReaderAnnotation?(id);return};super.mouseDown(with:event)}
+    var onSelectionFinished:(()->Void)?
+    var onDismiss:(()->Void)?
+    private var annotationInteraction=false
+    override func mouseUp(with event:NSEvent){if annotationInteraction {annotationInteraction=false;return};super.mouseUp(with:event);onSelectionFinished?()}
+    override func keyDown(with event:NSEvent){if event.keyCode==53 {clearSelection();onDismiss?()}else{super.keyDown(with:event);onSelectionFinished?()}}
+    func toolbarPoint()->CGPoint {let point=convert(window?.mouseLocationOutsideOfEventStream ?? .zero,from:nil);return CGPoint(x:point.x,y:isFlipped ? point.y:bounds.height-point.y)}
+    override func mouseDown(with event:NSEvent){let point=convert(event.locationInWindow,from:nil);if let page=page(for:point,nearest:false),let annotation=page.annotation(at:convert(point,to:page)),annotation.type=="Text",let raw=annotation.userName,raw.hasPrefix("reader:"),let id=UUID(uuidString:String(raw.dropFirst(7))){annotationInteraction=true;onReaderAnnotation?(id);return};annotationInteraction=false;onDismiss?();super.mouseDown(with:event)}
     var fitsPageWidth=true
     private var fitting=false
     override func layout(){super.layout();guard fitsPageWidth,!fitting,bounds.width>60,let page=currentPage ?? document?.page(at:0) else{return};let rendered=convert(page.bounds(for:.cropBox),from:page);guard rendered.width>1,scaleFactor>0 else{return};let desired=min(5,max(0.1,scaleFactor*(bounds.width-48)/rendered.width));guard abs(desired-scaleFactor)>0.003 else{return};fitting=true;let destination=currentDestination;autoScales=false;scaleFactor=desired;if let destination{go(to:destination)};fitting=false}
@@ -40,12 +82,14 @@ struct NativePDFReader:NSViewRepresentable {
     let rotation:Int
     let marginVisible:Bool
     let theme:ReadingTheme
+    let onSelectionAnchor:(CGPoint?)->Void
+    let onEditAnnotation:(Annotation,CGPoint)->Void
     func makeCoordinator()->Coordinator {Coordinator(repository:repository,session:session)}
     func makeNSView(context:Context)->PDFView {
         let view=WidthFittingPDFView();view.displayMode = .singlePageContinuous;view.displayDirection = .vertical;view.autoScales=true;view.displaysPageBreaks=true;view.pageBreakMargins=NSEdgeInsets(top:12,left:18,bottom:12,right:18);view.backgroundColor = .windowBackgroundColor;view.acceptsDraggedFiles=false;view.delegate=context.coordinator
-        session.pdfView=view;context.coordinator.attach(view);return view
+        session.pdfView=view;context.coordinator.onSelectionAnchor=onSelectionAnchor;context.coordinator.onEditAnnotation=onEditAnnotation;context.coordinator.attach(view);return view
     }
-    func updateNSView(_ view:PDFView,context:Context){view.backgroundColor=theme.pdfCanvas;context.coordinator.marginVisible=marginVisible;context.coordinator.update(view)}
+    func updateNSView(_ view:PDFView,context:Context){view.backgroundColor=theme.pdfCanvas;context.coordinator.marginVisible=marginVisible;context.coordinator.onSelectionAnchor=onSelectionAnchor;context.coordinator.onEditAnnotation=onEditAnnotation;context.coordinator.update(view)}
     static func pieces(_ selection:PDFSelection,document:PDFDocument) -> [PDFPiece] {
         var pieces:[PDFPiece]=[]
         for page in selection.pages {
@@ -77,13 +121,26 @@ struct NativePDFReader:NSViewRepresentable {
     @MainActor final class Coordinator:NSObject,PDFViewDelegate {
         let repository:LibraryRepository;let session:ReaderSession
         weak var view:PDFView?;var bookID:UUID?;var token:UUID?;var marksFingerprint="";var generated:[(PDFPage,PDFAnnotation)]=[];var observers:[NSObjectProtocol]=[];var saveWork:DispatchWorkItem?;var baseRotations:[Int]=[];var rotation=0;var applying=false;var marginVisible=false
+        var mouseMonitor:Any?
+        var selectionInProgress=false
+        var onSelectionAnchor:((CGPoint?)->Void)?
+        var onEditAnnotation:((Annotation,CGPoint)->Void)?
         init(repository:LibraryRepository,session:ReaderSession){self.repository=repository;self.session=session}
-        deinit{observers.forEach{NotificationCenter.default.removeObserver($0)}}
+        deinit{observers.forEach{NotificationCenter.default.removeObserver($0)};if let mouseMonitor {NSEvent.removeMonitor(mouseMonitor)}}
         func attach(_ view:PDFView){self.view=view
-            (view as? WidthFittingPDFView)?.onReaderAnnotation={[weak self]id in guard let self,let mark=self.repository.annotations.first(where:{$0.id==id}) else{return};self.session.editing=mark}
+            // PDFDocumentView can consume mouse tracking; observe mouse-up in its containing window too.
+            mouseMonitor=NSEvent.addLocalMonitorForEvents(matching:.leftMouseUp){[weak self] event in
+                guard let self,let view=self.view,event.window === view.window,view.bounds.contains(view.convert(event.locationInWindow,from:nil)) else{return event}
+                guard self.selectionInProgress else{return event};self.selectionInProgress=false
+                DispatchQueue.main.async{[weak self] in guard let self,!self.session.pdfSelection.isEmpty else{return};self.changed();self.placeToolbar(nearMouse:true)}
+                return event
+            }
+            (view as? WidthFittingPDFView)?.onReaderAnnotation={[weak self]id in guard let self,let mark=self.repository.annotations.first(where:{$0.id==id}) else{return};self.onEditAnnotation?(mark,(self.view as? WidthFittingPDFView)?.toolbarPoint() ?? .zero)}
+            (view as? WidthFittingPDFView)?.onSelectionFinished={[weak self] in self?.changed();self?.placeToolbar(nearMouse:true)}
+            (view as? WidthFittingPDFView)?.onDismiss={[weak self] in self?.onSelectionAnchor?(nil)}
             for name in [Notification.Name.PDFViewSelectionChanged,.PDFViewPageChanged,.PDFViewVisiblePagesChanged,.PDFViewScaleChanged] {observers.append(NotificationCenter.default.addObserver(forName:name,object:view,queue:.main){[weak self]_ in Task{@MainActor in self?.changed()}})}
             observers.append(NotificationCenter.default.addObserver(forName:NSView.boundsDidChangeNotification,object:nil,queue:.main){[weak self]n in guard let clip=n.object as? NSView,let view=self?.view,clip.isDescendant(of:view) else{return};Task{@MainActor in self?.changed()}})
-            observers.append(NotificationCenter.default.addObserver(forName:.PDFViewAnnotationHit,object:view,queue:.main){[weak self]n in guard let annotation=n.userInfo?.values.compactMap({$0 as? PDFAnnotation}).first,let raw=annotation.userName,raw.hasPrefix("reader:"),let id=UUID(uuidString:String(raw.dropFirst(7))) else{return};Task{@MainActor in if let self,let mark=self.repository.annotations.first(where:{$0.id==id}) {self.session.editing=mark}}})
+            observers.append(NotificationCenter.default.addObserver(forName:.PDFViewAnnotationHit,object:view,queue:.main){[weak self]n in guard let annotation=n.userInfo?.values.compactMap({$0 as? PDFAnnotation}).first,let raw=annotation.userName,raw.hasPrefix("reader:"),let id=UUID(uuidString:String(raw.dropFirst(7))) else{return};Task{@MainActor in if let self,let mark=self.repository.annotations.first(where:{$0.id==id}) {self.onEditAnnotation?(mark,(self.view as? WidthFittingPDFView)?.toolbarPoint() ?? .zero)}}})
         }
         func update(_ view:PDFView){
             guard let book=session.book,book.format=="pdf" else{return};applying=true;defer{applying=false}
@@ -97,7 +154,7 @@ struct NativePDFReader:NSViewRepresentable {
             if let fitting=view as? WidthFittingPDFView {fitting.fitsPageWidth=book.pdfScale<=0};if book.pdfScale<=0 {view.needsLayout=true}else if abs(view.scaleFactor-book.pdfScale)>0.001 {let destination=view.currentDestination;view.autoScales=false;view.scaleFactor=book.pdfScale;if let destination{view.go(to:destination)}}
             let marks=repository.marks(for:book),fingerprint=marks.map{"\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.note)"}.joined()
             if fingerprint != marksFingerprint {marksFingerprint=fingerprint;for(p,a)in generated{p.removeAnnotation(a)};generated=[]
-                for mark in marks {for piece in mark.pdfPieces {guard let page=doc.page(at:piece.page),Self.valid(piece,doc:doc) else{continue};for box in piece.boxes {let a=PDFAnnotation(bounds:box.rect,forType:.highlight,withProperties:nil);a.color=NSColor.systemYellow.withAlphaComponent(0.35);a.userName="reader:"+mark.id.uuidString;page.addAnnotation(a);generated.append((page,a))}
+                for mark in marks {for piece in mark.pdfPieces {guard let page=doc.page(at:piece.page),Self.valid(piece,doc:doc) else{continue};for box in piece.boxes {let a=Self.markAnnotation(box:box.rect,style:mark.styleRaw,color:mark.colorHex);a.userName="reader:"+mark.id.uuidString;page.addAnnotation(a);generated.append((page,a))}
                     if let box=piece.boxes.first {let a=PDFAnnotation(bounds:CGRect(x:box.x+box.width+4,y:box.y,width:16,height:16),forType:.text,withProperties:nil);a.contents=mark.note.isEmpty ? "划线：点击编辑想法":mark.note;a.userName="reader:"+mark.id.uuidString;a.color = .systemGreen;page.addAnnotation(a);generated.append((page,a))}
                 }}
             }
@@ -110,9 +167,39 @@ struct NativePDFReader:NSViewRepresentable {
             }
             session.ready=true;session.pdfVisiblePages=Set(view.visiblePages.map{doc.index(for:$0)});if session.pdfVisiblePages.isEmpty{session.pdfVisiblePages=[session.pdfPageIndex]}
         }
+        static func markAnnotation(box:CGRect,style:String,color:String)->PDFAnnotation {
+            let raw=color.trimmingCharacters(in:CharacterSet(charactersIn:"#"))
+            let rgb=UInt32(raw,radix:16) ?? 0xE8C55A
+            let tint=NSColor(srgbRed:CGFloat((rgb>>16)&255)/255,green:CGFloat((rgb>>8)&255)/255,blue:CGFloat(rgb&255)/255,alpha:1)
+            if style == "wave" {
+                // Explicit ink path gives a real wave on every PDFKit version and scales/rotates with the page.
+                let a=PDFAnnotation(bounds:box.insetBy(dx:0,dy:-2),forType:.ink,withProperties:nil)
+                let path=NSBezierPath();let y:CGFloat=2.2,amplitude:CGFloat=1.1,wavelength:CGFloat=5
+                path.move(to:CGPoint(x:0,y:y))
+                var x:CGFloat=0
+                while x<box.width {x=min(box.width,x+0.5);path.line(to:CGPoint(x:x,y:y+sin(x/wavelength * .pi * 2)*amplitude))}
+                path.lineWidth=1.2;a.add(path);let border=PDFBorder();border.lineWidth=1.2;a.border=border;a.color=tint;return a
+            }
+            let a=PDFAnnotation(bounds:box,forType:.highlight,withProperties:nil);a.color=tint.withAlphaComponent(0.35);return a
+        }
+        func placeToolbar(nearMouse:Bool) {
+            guard let view=view as? WidthFittingPDFView,let selection=view.currentSelection,!session.pdfSelection.isEmpty else {onSelectionAnchor?(nil);return}
+            if NSEvent.pressedMouseButtons != 0 && !nearMouse {selectionInProgress=true;onSelectionAnchor?(nil);return}
+            if nearMouse {onSelectionAnchor?(view.toolbarPoint());return}
+            let lines=selection.selectionsByLine()
+            for line in lines.reversed() {for page in line.pages.reversed() {
+                let rect=view.convert(line.bounds(for:page),from:page)
+                if rect.intersects(view.bounds) {
+                    let point=CGPoint(x:rect.maxX,y:view.isFlipped ? rect.maxY:view.bounds.height-rect.minY)
+                    onSelectionAnchor?(point);return
+                }
+            }}
+            onSelectionAnchor?(nil)
+        }
         static func valid(_ piece:PDFPiece,doc:PDFDocument)->Bool {NativePDFReader.resolve(piece,document:doc) != nil}
         func changed(){guard !applying,let view,let doc=view.document,let book=session.book,book.id==bookID else{return}
             if doc.allowsCopying && doc.allowsCommenting,let selection=view.currentSelection,!(selection.string ?? "").trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {session.pdfSelection=NativePDFReader.pieces(selection,document:doc)}else{session.pdfSelection=[]}
+            placeToolbar(nearMouse:false)
             session.pdfVisiblePages=Set(view.visiblePages.map{doc.index(for:$0)})
             saveWork?.cancel();let work=DispatchWorkItem{[weak self]in guard let self,let destination=view.currentDestination,let page=destination.page else{return};do{try self.repository.pdfProgress(book,page:doc.index(for:page),point:destination.point);self.session.chapter=book.chapterPath}catch{self.session.error=error.localizedDescription}};saveWork=work;DispatchQueue.main.asyncAfter(deadline:.now()+0.3,execute:work)
         }

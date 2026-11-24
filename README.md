@@ -2,11 +2,11 @@
 
 免费的原生 Mac EPUB / PDF 阅读器。把引用原句和自己的想法放在一起，安静阅读，随手记录。
 
-[下载安装包](https://github.com/xgchip/reading-simple/releases/tag/v1.0.0) · [官网](https://xgchip.github.io/reading-simple/) · [使用帮助](https://xgchip.github.io/reading-simple/support.html) · [隐私政策](https://xgchip.github.io/reading-simple/privacy.html)
+[下载安装包](https://github.com/xgchip/reading-simple/releases/tag/v1.1.0) · [官网](https://xgchip.github.io/reading-simple/) · [使用帮助](https://xgchip.github.io/reading-simple/support.html) · [隐私政策](https://xgchip.github.io/reading-simple/privacy.html)
 
 ## 下载与安装
 
-从 Releases 下载 `ReadingSimple-1.0.0-arm64.dmg`，打开磁盘映像，将「阅读从简」拖到 Applications。当前提供 **Apple Silicon（M 系列）版本**；部署目标 macOS 14，实际验证环境 macOS 27.0.1，尚未在 macOS 14 实机验收。没有 Intel 安装包。
+从 Releases 下载 `ReadingSimple-1.1.0-arm64.dmg`，打开磁盘映像，将「阅读从简」拖到 Applications。当前提供 **Apple Silicon（M 系列）版本**；部署目标 macOS 14，实际验证环境 macOS 27.0.1，尚未在 macOS 14 实机验收。没有 Intel 安装包。
 
 **首个版本为公开测试版：ad-hoc 签名，未经 Apple 公证。** macOS 可能阻止首次打开。请确认下载来自本仓库，并核对 SHA256SUMS.txt；不要关闭 Gatekeeper 或运行去除安全保护的命令。如果不希望运行未经公证的安装包，可按下方步骤从源码构建。系统对外部应用的处理说明见 [Apple 支持](https://support.apple.com/102445)。
 
@@ -41,8 +41,14 @@ zsh scripts/build_direct.sh
 
 Copyright (C) 2026 Yanli Tan。本项目原创代码、文档与图标使用 **GPL-3.0-only**，完整条款见 [LICENSE](LICENSE)。ZIPFoundation 保持 MIT 许可证，原创暖纸/深色纹理保持 CC0，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-每个安装包旁提供 `ReadingSimple-1.0.0-CorrespondingSource.zip`，包含对应应用源码、构建脚本以及 ZIPFoundation 0.9.20 完整源码和许可。GitHub 自动生成的 Source code 下载仅含本仓库；需要完整依赖源码时请下载上述对应源码包。
+每个安装包旁提供 `ReadingSimple-1.1.0-CorrespondingSource.zip`，包含对应应用源码、构建脚本以及 ZIPFoundation 0.9.20 完整源码和许可。GitHub 自动生成的 Source code 下载仅含本仓库；需要完整依赖源码时请下载上述对应源码包。
 
 ## 反馈
 
 请在 [Issues](https://github.com/xgchip/reading-simple/issues) 反馈问题，附应用版本、系统版本、文档格式和复现步骤。不要公开私人书籍、摘录或笔记；支持邮箱为 haley.chai@gmail.com。
+
+## 1.1.0 更新
+
+选字工具栏靠近鼠标或可见选区，支持荧光笔、波浪线、六种预置颜色与自定义颜色；已有标注可编辑外观，EPUB/PDF 均支持。旧书库自动迁移并保留笔记和草稿。
+
+本版通过数据迁移、重开持久化、WebKit 工具栏、PDFKit 渲染与构建校验；操作系统级真实鼠标拖选及系统颜色面板端到端验收尚未完成。仍作为未经 Apple 公证的公开测试版发布。

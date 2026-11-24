@@ -209,6 +209,11 @@ struct NoteEditor:View {
     var body:some View {
         VStack(alignment:.leading,spacing:16){HStack{Text("写在页边").font(.system(size:21,weight:.medium,design:.serif));Spacer();Button("稍后继续",action:close).keyboardShortcut(.cancelAction)}
             ScrollView{Text(mark.quote).font(.callout).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(15).background(theme.background).clipShape(RoundedRectangle(cornerRadius:8))}.frame(maxHeight:110)
+            AnnotationAppearance(style:Binding(get:{mark.styleRaw},set:{value in
+                do {try repository.setAppearance(mark,style:value,color:mark.colorHex)} catch {status="未保存样式："+error.localizedDescription}
+            }),color:Binding(get:{mark.colorHex},set:{value in
+                do {try repository.setAppearance(mark,style:mark.styleRaw,color:value)} catch {status="未保存颜色："+error.localizedDescription}
+            }))
             TextEditor(text:$text).font(.system(size:14)).scrollContentBackground(.hidden).frame(minHeight:200).padding(12).background(theme.surface).overlay(RoundedRectangle(cornerRadius:9).stroke(theme.line)).accessibilityLabel("想法正文")
             Text(status).font(.caption).foregroundStyle(status.hasPrefix("未") ? Color.red:Color.secondary)
             HStack{Menu("删除…"){if !mark.note.isEmpty || mark.draft != nil {Button("仅删除备注",role:.destructive){deleteKind="note"}};Button("删除整条划线",role:.destructive){deleteKind="mark"}};Spacer();Button("保存想法"){do{try repository.saveNote(mark,text:text);close()}catch{status="未保存："+error.localizedDescription}}.buttonStyle(ReaderButtonStyle(prominent:true)).disabled(text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).keyboardShortcut("s")}

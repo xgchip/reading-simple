@@ -117,7 +117,7 @@ struct ReaderWebView: NSViewRepresentable {
         init(repository:LibraryRepository,session:ReaderSession){self.repository=repository;self.session=session}
         func payload() -> [String:Any] {
             guard let book=session.book else {return [:]}
-            let marks=repository.marks(for:book,chapter:session.chapter).map{m -> [String:Any] in ["id":m.id.uuidString,"start":m.start,"end":m.end,"quote":m.quote,"prefix":m.prefix,"suffix":m.suffix,"anchorVersion":m.anchorVersion,"note":m.note,"draft":m.draft as Any? ?? NSNull()]}
+            let marks=repository.marks(for:book,chapter:session.chapter).map{m -> [String:Any] in ["id":m.id.uuidString,"start":m.start,"end":m.end,"quote":m.quote,"prefix":m.prefix,"suffix":m.suffix,"anchorVersion":m.anchorVersion,"style":m.styleRaw,"color":m.colorHex,"note":m.note,"draft":m.draft as Any? ?? NSNull()]}
             return ["marks":marks,"sidebar":session.sidebar,"font":session.font,"theme":theme,"texture":(!NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast && !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency),"offset":session.pendingOffset]
         }
         func json(_ o:Any) -> String {(String(data:(try? JSONSerialization.data(withJSONObject:o,options:[.sortedKeys,.fragmentsAllowed])) ?? Data("null".utf8),encoding:.utf8) ?? "null")}
@@ -168,7 +168,11 @@ struct ReaderWebView: NSViewRepresentable {
             case "selection":guard let raw=body["anchor"],JSONSerialization.isValidJSONObject(raw) else {return}
                 let anchor=try JSONDecoder().decode(TextAnchor.self,from:JSONSerialization.data(withJSONObject:raw));guard anchor.valid(),anchor.end<=textLength else {return}
                 let mark=try repository.mark(book:book,chapter:loadedChapter,anchor:anchor)
+                try repository.setAppearance(mark,style:body["style"] as? String ?? "highlight",color:body["color"] as? String ?? "#E8C55A")
                 if body["action"] as? String=="note" {session.editing=mark}
+            case "appearance":
+                guard let idString=body["id"] as? String,let id=UUID(uuidString:idString),let mark=repository.marks(for:book,chapter:loadedChapter).first(where:{$0.id==id}),let style=body["style"] as? String,let color=body["color"] as? String else{return}
+                try repository.setAppearance(mark,style:style,color:color)
             case "edit","openMark","anchorFailed":guard let idString=body["id"] as? String,let id=UUID(uuidString:idString),let mark=repository.marks(for:book,chapter:loadedChapter).first(where:{$0.id==id}) else {return}
                 if type=="edit" {session.editing=mark} else if type=="anchorFailed" {session.failed=mark}
             case "progress":guard let n=body["offset"] as? Int,n>=0,n<=textLength else {return};try repository.progress(book,chapter:loadedChapter,offset:n)

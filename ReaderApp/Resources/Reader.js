@@ -33,10 +33,55 @@ function capture(){const s=getSelection();if(!s||s.isCollapsed||!s.rangeCount)re
  const start=offsetAt(r.startContainer,r.startOffset),end=offsetAt(r.endContainer,r.endOffset);if(end<=start||end-start>200000)return null;
  return {start,end,quote:text.slice(start,end),prefix:text.slice(Math.max(0,start-48),start),suffix:text.slice(end,end+48)};
 }
-function selection(){selected=capture();if(!selected){toolbar.hidden=true;return;}const r=rangeAt(selected.start,selected.end),box=r.getBoundingClientRect();toolbar.hidden=false;
- toolbar.style.left=Math.max(8,Math.min(innerWidth-220,box.left))+'px';toolbar.style.top=Math.max(8,Math.min(innerHeight-45,box.bottom+8))+'px';}
-for(const button of toolbar.querySelectorAll('button')){button.addEventListener('mousedown',e=>e.preventDefault());button.addEventListener('click',()=>{if(selected)send('selection',{anchor:selected,action:button.dataset.action});toolbar.hidden=true;getSelection().removeAllRanges();});}
-document.addEventListener('mouseup',()=>setTimeout(selection,0));document.addEventListener('keyup',e=>{if(e.key==='Escape'){popup.hidden=true;toolbar.hidden=true;}else selection();});
+// Keep an immutable anchor while the native color picker takes keyboard focus.
+let editingMarkID=null, selectionPoint=null, markStyle='highlight', markColor='#E8C55A';
+const presetColors=[['金黄','#E8C55A'],['草绿','#72B88A'],['天空蓝','#65A9E8'],['浅紫','#B593DA'],['玫瑰粉','#E990A5'],['橙色','#ED995A']];
+function validColor(value){return /^#[0-9a-f]{6}$/i.test(value||'')?value:'#E8C55A';}
+function dismissToolbar(){toolbar.hidden=true;editingMarkID=null;selected=null;selectionPoint=null;}
+function placeToolbar(point){
+ const box=toolbar.getBoundingClientRect(),gap=12,pad=8;
+ const x=Math.max(pad,Math.min(innerWidth-box.width-pad,point.x-box.width/2));
+ const below=point.y+gap;const y=below+box.height<=innerHeight-pad?below:point.y-box.height-gap;
+ toolbar.style.left=x+'px';toolbar.style.top=Math.max(pad,Math.min(innerHeight-box.height-pad,y))+'px';
+}
+function applyAppearance(){
+ toolbar.querySelectorAll('[data-style]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.style===markStyle)));
+ toolbar.querySelectorAll('[data-color]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.color.toLowerCase()===markColor.toLowerCase())));
+ const input=toolbar.querySelector('input[type=color]');input.value=markColor;
+ toolbar.style.setProperty('--selected-mark-color',markColor);
+ if(editingMarkID)send('appearance',{id:editingMarkID,style:markStyle,color:markColor});
+}
+function showToolbar(point,mark=null){
+ editingMarkID=mark?.id||null;
+ if(mark){markStyle=mark.style==='wave'?'wave':'highlight';markColor=validColor(mark.color);}
+ toolbar.replaceChildren();toolbar.setAttribute('role','toolbar');toolbar.setAttribute('aria-label',mark?'编辑划线':'选中文字操作');
+ const actions=document.createElement('div');actions.className='reader-selection-actions';
+ for(const [value,label] of [['highlight','荧光笔'],['wave','波浪线']]){const b=button(label,()=>{markStyle=value;applyAppearance();});b.dataset.style=value;actions.append(b);}
+ actions.append(button(mark?'写想法 / 编辑':'写想法',()=>{if(editingMarkID)send('edit',{id:editingMarkID});else if(selected)send('selection',{anchor:selected,action:'note',style:markStyle,color:markColor});dismissToolbar();getSelection()?.removeAllRanges();}));
+ if(mark?.note)actions.append(button('查看想法',()=>{dismissToolbar();showPopup(mark);}));
+ const save=button(mark?'完成':'划线',()=>{if(!editingMarkID&&selected)send('selection',{anchor:selected,action:'highlight',style:markStyle,color:markColor});dismissToolbar();getSelection()?.removeAllRanges();});save.className='reader-selection-save';actions.append(save);
+ const close=button('×',dismissToolbar);close.setAttribute('aria-label','关闭工具栏');actions.append(close);toolbar.append(actions);
+ const colors=document.createElement('div');colors.className='reader-selection-colors';colors.setAttribute('role','group');colors.setAttribute('aria-label','划线颜色');
+ for(const [label,color] of presetColors){const b=button('',()=>{markColor=color;applyAppearance();});b.className='reader-color-swatch';b.dataset.color=color;b.style.background=color;b.title=label;b.setAttribute('aria-label',label);colors.append(b);}
+ const label=document.createElement('label');label.className='reader-custom-color';label.textContent='自定义';const input=document.createElement('input');input.type='color';input.value=markColor;input.setAttribute('aria-label','自定义划线颜色');input.addEventListener('input',()=>{markColor=input.value;applyAppearance();});label.append(input);colors.append(label);toolbar.append(colors);
+ // Initial population must not write an unchanged existing annotation.
+ const savedID=editingMarkID;editingMarkID=null;applyAppearance();editingMarkID=savedID;
+ toolbar.hidden=false;selectionPoint=point;placeToolbar(point);
+}
+function selection(point=null){
+ selected=capture();if(!selected){dismissToolbar();return;}
+ const range=rangeAt(selected.start,selected.end),rects=[...range.getClientRects()];
+ const existing=marks.find(m=>m.start===selected.start&&m.end===selected.end&&m.quote===selected.quote);
+ const sel=getSelection(),focus=sel?.focusNode;let rect=rects.at(-1)||range.getBoundingClientRect();
+ if(focus){const caret=document.createRange();try{caret.setStart(focus,sel.focusOffset);caret.collapse(true);const r=caret.getBoundingClientRect();if(r.height)rect=r;}catch{}}
+ showToolbar(point||{x:rect.right,y:rect.bottom},existing);
+}
+// Prevent toolbar buttons from collapsing browser selection. Color input remains focusable.
+toolbar.addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault();});
+document.addEventListener('mousedown',e=>{if(!toolbar.contains(e.target)&&!e.target.closest('.reader-marker'))dismissToolbar();});
+document.addEventListener('mouseup',e=>{if(toolbar.contains(e.target)||e.target.closest('.reader-marker')||popup.contains(e.target))return;const point={x:e.clientX,y:e.clientY};setTimeout(()=>selection(point),0);});
+document.addEventListener('keyup',e=>{if(e.key==='Escape'){popup.hidden=true;dismissToolbar();return;}if(toolbar.contains(e.target)||popup.contains(e.target))return;if(e.key.startsWith('Arrow')&&e.shiftKey)selection();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)dismissToolbar();});
 function readingPoint(){
  const x=Math.max(4,root.getBoundingClientRect().left+Math.min(30,root.clientWidth/4)),y=60;
  const caret=document.caretRangeFromPoint?.(x,y);
@@ -61,9 +106,9 @@ function layout(){
  const ordered=marks.map(m=>({m,r:resolve(m)})).filter(x=>x.r).sort((a,b)=>a.m.start-b.m.start||a.m.end-b.m.end);
  for(const {m,r} of ordered){
   const rects=[...r.getClientRects()].filter(x=>x.width>0&&x.height>0);
-  for(const rect of rects){const box=document.createElement('div');box.className='reader-highlight'+(activeID===m.id?' active':'');Object.assign(box.style,{left:(rect.left+scrollX)+'px',top:(rect.top+scrollY)+'px',width:rect.width+'px',height:rect.height+'px'});highlights.append(box);}
+  for(const rect of rects){const box=document.createElement('div');box.className='reader-highlight'+(m.style==='wave'?' reader-wave':'')+(activeID===m.id?' active':'');box.style.setProperty('--mark-color',validColor(m.color));Object.assign(box.style,{left:(rect.left+scrollX)+'px',top:(rect.top+scrollY)+'px',width:rect.width+'px',height:rect.height+'px'});highlights.append(box);}
   const rect=rects[0];if(!rect)continue;
-  const marker=button(m.note?'●':'＋',()=>{if(!m.note){send('edit',{id:m.id});return;}openMark(m.id);if(!side||!m.note)showPopup(m);schedule();});marker.className='reader-marker';marker.dataset.markId=m.id;marker.setAttribute('aria-label',m.note?'查看这句话的备注':'为划线写想法');let markerY=rect.top+scrollY;while(markerRows.some(y=>Math.abs(y-markerY)<25))markerY+=25;markerRows.push(markerY);Object.assign(marker.style,{left:(root.getBoundingClientRect().right+scrollX+7)+'px',top:markerY+'px'});highlights.append(marker);
+  const marker=button(m.note?'●':'＋',()=>{const box=marker.getBoundingClientRect();selected=null;popup.hidden=true;showToolbar({x:box.left,y:box.bottom},m);});marker.className='reader-marker';marker.dataset.markId=m.id;marker.setAttribute('aria-label','编辑划线风格、颜色或想法');let markerY=rect.top+scrollY;while(markerRows.some(y=>Math.abs(y-markerY)<25))markerY+=25;markerRows.push(markerY);Object.assign(marker.style,{left:(root.getBoundingClientRect().right+scrollX+7)+'px',top:markerY+'px'});highlights.append(marker);
   if(side&&m.note){const card=document.createElement('article');card.className='reader-note'+(activeID===m.id?' active':'');card.dataset.id=m.id;
    const body=document.createElement('p');body.textContent=m.note;body.className=expanded.has(m.id)?'':'collapsed';card.append(body);
    if(m.note.length>90||m.note.split('\n').length>4)card.append(button(expanded.has(m.id)?'收起':'展开',()=>{expanded.has(m.id)?expanded.delete(m.id):expanded.add(m.id);schedule();}));
@@ -85,9 +130,9 @@ window.Reader={
  testResolve(a){const r=resolve(a);return r?offsetAt(r.startContainer,r.startOffset):null;},
  testGeometry(){return [...notes.children].map(n=>({id:n.dataset.id,top:n.getBoundingClientRect().top,height:n.offsetHeight}));}
 };
-let resizeTimer;addEventListener('resize',()=>{if(!resizePoint)resizePoint={...stablePoint};clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const p=resizePoint;resizePoint=null;if(p)jumpOffset(p.offset,p.delta);stablePoint=readingPoint();schedule();},80);});
+let resizeTimer;addEventListener('resize',()=>{dismissToolbar();if(!resizePoint)resizePoint={...stablePoint};clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const p=resizePoint;resizePoint=null;if(p)jumpOffset(p.offset,p.delta);stablePoint=readingPoint();schedule();},80);});
 new ResizeObserver(schedule).observe(root);root.querySelectorAll('img').forEach(img=>img.addEventListener('load',schedule));document.fonts?.ready.then(schedule);
-let progressTimer;addEventListener('scroll',()=>{toolbar.hidden=true;if(!resizePoint)stablePoint=readingPoint();const now=Date.now();if(now-lastProgress>200){lastProgress=now;send('progress',{offset:readingPoint().offset});}clearTimeout(progressTimer);progressTimer=setTimeout(()=>send('progress',{offset:readingPoint().offset}),250);}, {passive:true});
+let progressTimer;addEventListener('scroll',()=>{dismissToolbar();if(!resizePoint)stablePoint=readingPoint();const now=Date.now();if(now-lastProgress>200){lastProgress=now;send('progress',{offset:readingPoint().offset});}clearTimeout(progressTimer);progressTimer=setTimeout(()=>send('progress',{offset:readingPoint().offset}),250);}, {passive:true});
 addEventListener('pagehide',()=>send('progress',{offset:readingPoint().offset}));
 document.addEventListener('click',e=>{const a=e.target.closest('a');if(a&&root.contains(a)){e.preventDefault();send('link',{href:a.getAttribute('href')||''});}});
 window.Reader.update(initial);let restoreTimer=setTimeout(()=>window.Reader.restore(initial.offset||0),80);send('ready',{textLength:text.length});

@@ -14,7 +14,7 @@ import PDFKit
         let base = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MarginReader", isDirectory: true)
         self.root = base
         try FileManager.default.createDirectory(at: base.appendingPathComponent("Books"), withIntermediateDirectories: true)
-        let schema = Schema(versionedSchema: ReaderSchemaV2.self)
+        let schema = Schema(versionedSchema: ReaderSchemaV3.self)
         container = try ModelContainer(for: schema, migrationPlan: ReaderMigration.self, configurations: ModelConfiguration(schema: schema, url: base.appendingPathComponent("Library.store")))
         context = ModelContext(container); context.autosaveEnabled = false
         try reload()
@@ -56,6 +56,13 @@ import PDFKit
         guard anchor.valid(), book.chapters.contains(where: { $0.path == chapter }) else { throw ReaderError.message("选区已失效，请重新选择文字。") }
         if let existing = marks(for: book, chapter: chapter).first(where: { $0.start == anchor.start && $0.end == anchor.end && $0.quote == anchor.quote }) { return existing }
         let mark = Annotation(bookID: book.id, chapter: chapter, anchor: anchor); context.insert(mark); try commit(); return mark
+    }
+    func setAppearance(_ mark: Annotation, style: String, color: String) throws {
+        guard ["highlight", "wave"].contains(style), color.range(of: "^#[0-9A-Fa-f]{6}$", options: .regularExpression) != nil else {
+            throw ReaderError.message("请选择有效的划线样式与颜色。")
+        }
+        mark.styleRaw = style; mark.colorHex = color.uppercased(); mark.updatedAt = .now
+        try commit()
     }
     func draft(_ mark: Annotation, text: String) throws { guard text.utf8.count <= 200_000 else { throw ReaderError.message("想法过长，请缩短后保存。") }; mark.draft = text; try commit() }
     func saveNote(_ mark: Annotation, text: String) throws {

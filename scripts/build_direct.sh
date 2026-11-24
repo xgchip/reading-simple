@@ -3,8 +3,8 @@
 # Production-isolated direct distribution. No upload to GitHub and no local App replacement.
 set -eu
 cd "${0:A:h:h}"
-direct_version="${DIRECT_VERSION:-1.0.0}"
-direct_build="${DIRECT_BUILD_NUMBER:-1}"
+direct_version="${DIRECT_VERSION:-1.1.0}"
+direct_build="${DIRECT_BUILD_NUMBER:-2}"
 direct_copyright="${DIRECT_COPYRIGHT:-2026 Yanli Tan}"
 direct_output="${1:-$PWD/release/direct}"
 direct_output="${direct_output:A}"

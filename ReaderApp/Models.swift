@@ -100,12 +100,64 @@ enum ReaderSchemaV2: VersionedSchema {
         var anchor: TextAnchor { TextAnchor(start: start, end: end, quote: quote, prefix: prefix, suffix: suffix) }
     }
 }
-enum ReaderMigration: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [ReaderSchemaV1.self, ReaderSchemaV2.self] }
-    static var stages: [MigrationStage] { [.lightweight(fromVersion: ReaderSchemaV1.self, toVersion: ReaderSchemaV2.self)] }
+enum ReaderSchemaV3: VersionedSchema {
+    static let versionIdentifier = Schema.Version(3, 0, 0)
+    static var models: [any PersistentModel.Type] { [Book.self, Annotation.self] }
+    @Model final class Book {
+        @Attribute(.unique) var id: UUID
+        @Attribute(.unique) var contentHash: String
+        var title: String
+        var author: String
+        var folder: String
+        var cover: String?
+        var chaptersData: Data
+        var chapterPath: String
+        var progressOffset: Int
+        var fontSize: Double
+        var updatedAt: Date
+        var format: String = "epub"
+        var pdfPageCount: Int = 0
+        var pdfScale: Double = 0
+        var pdfProgressX: Double = 0
+        var pdfProgressY: Double = 0
+        var pdfRotation: Int = 0
+        init(hash: String, title: String, author: String, folder: String, cover: String?, chapters: [Chapter]) throws {
+            id = UUID(); self.contentHash = hash; self.title = title; self.author = author; self.folder = folder; self.cover = cover
+            chaptersData = try JSONEncoder().encode(chapters); chapterPath = chapters.first?.path ?? ""; progressOffset = 0; fontSize = 19; updatedAt = .now
+        }
+        var chapters: [Chapter] { (try? JSONDecoder().decode([Chapter].self, from: chaptersData)) ?? [] }
+    }
+    @Model final class Annotation {
+        @Attribute(.unique) var id: UUID
+        var bookID: UUID
+        var chapter: String
+        var anchorVersion: Int
+        var start: Int
+        var end: Int
+        var quote: String
+        var prefix: String
+        var suffix: String
+        var note: String
+        var draft: String?
+        var createdAt: Date
+        var updatedAt: Date
+        var pdfAnchorData: Data? = nil
+        var styleRaw: String = "highlight"
+        var colorHex: String = "#E8C55A"
+        init(bookID: UUID, chapter: String, anchor: TextAnchor) {
+            id = UUID(); self.bookID = bookID; self.chapter = chapter; anchorVersion = 1
+            start = anchor.start; end = anchor.end; quote = anchor.quote; prefix = anchor.prefix; suffix = anchor.suffix
+            note = ""; draft = nil; createdAt = .now; updatedAt = .now
+        }
+        var anchor: TextAnchor { TextAnchor(start: start, end: end, quote: quote, prefix: prefix, suffix: suffix) }
+    }
 }
-typealias Book = ReaderSchemaV2.Book
-typealias Annotation = ReaderSchemaV2.Annotation
+enum ReaderMigration: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] { [ReaderSchemaV1.self, ReaderSchemaV2.self, ReaderSchemaV3.self] }
+    static var stages: [MigrationStage] { [.lightweight(fromVersion: ReaderSchemaV1.self, toVersion: ReaderSchemaV2.self), .lightweight(fromVersion: ReaderSchemaV2.self, toVersion: ReaderSchemaV3.self)] }
+}
+typealias Book = ReaderSchemaV3.Book
+typealias Annotation = ReaderSchemaV3.Annotation
 struct TextAnchor: Codable, Equatable {
     var start: Int
     var end: Int
